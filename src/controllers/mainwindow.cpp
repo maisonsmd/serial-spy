@@ -2,6 +2,7 @@
 #include "ui_mainwindow.h"
 #include <QtDebug>
 #include <QFontMetrics>
+#include "utils/commonconfig.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -15,13 +16,16 @@ MainWindow::MainWindow(QWidget *parent)
 
     ui->historyTable->setFont(QFont("Consolas"));
     ui->historyTable->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(ui->historyTable, &QTableView::customContextMenuRequested, this, &MainWindow::onTableContextMenuRequested);
 
     ui->historyTable->setModel(&m_history);
+    ui->txtNewlineAfterBytes->setValidator(new QIntValidator(8, 1000, this));
+    ui->txtNewlineAfterDuration->setValidator(new QIntValidator(10, 10000, this));
 
-    m_portA.setPortName("COM7");
-    m_portA.setBaudRate(1200);
-    qDebug() << m_portA.open(QIODevice::ReadWrite);
+    connectSignalSlots();
+
+    // m_portA.setPortName("COM7");
+    // m_portA.setBaudRate(1200);
+    // qDebug() << m_portA.open(QIODevice::ReadWrite);
 
     setNewlineAfterCount(16);
     setNewlineAfterCountEnabled(true);
@@ -30,6 +34,22 @@ MainWindow::MainWindow(QWidget *parent)
     setNewlineAfterDurationEnabled(true);
 
     setHistoryCapacity(100);
+
+    auto testTimer = new QTimer();
+    connect(testTimer, &QTimer::timeout, this, [&]{
+        auto data = QByteArray();
+        data.reserve(20);
+        for (int i = 0; i < 20; ++i) {
+            data.append(rand());
+        }
+        onDataReceived(data);
+        onDataReceived("1234567890");
+    });
+
+    testTimer->setInterval(500);
+    testTimer->setSingleShot(false);
+    testTimer->start();
+    onDataReceived("1234567822345678323456789423456789");
 }
 
 MainWindow::~MainWindow()
@@ -49,17 +69,11 @@ void MainWindow::onDataReceived(const QByteArray &_data)
     m_endedAtNewline = false;
 
     m_history.appendData(HistoryModel::A_TO_B, _data);
-    // ui->historyTable->resizeColumnsToContents();
-    ui->historyTable->resizeRowToContents(m_history.rowCount() - 1);
-    ui->historyTable->scrollToBottom();
-}
+    resizeToFit();
 
-void MainWindow::onBreakTimeout()
-{
-    if (m_endedAtNewline) {
-        return;
+    if (autoscroll()) {
+        ui->historyTable->scrollToBottom();
     }
-    qDebug("NLT");
 }
 
 void MainWindow::onTableContextMenuRequested(const QPoint &_pos)
@@ -72,6 +86,11 @@ void MainWindow::resizeToFit()
 {
     ui->historyTable->resizeRowsToContents();
     ui->historyTable->resizeColumnsToContents();
+}
+
+void MainWindow::clearHistory()
+{
+    m_history.clear();
 }
 
 int MainWindow::newlineAfterCount() const
@@ -90,7 +109,11 @@ void MainWindow::setNewlineAfterCount(int newNewlineAfterCount)
     m_newlineAfterCount = newNewlineAfterCount;
     m_history.setNewlineAfterCount(newNewlineAfterCount);
 
-    recalculateCellWidth();
+    if (newNewlineAfterCount != ui->txtNewlineAfterBytes->text().toUInt())
+        ui->txtNewlineAfterBytes->setText(QString::number(newNewlineAfterCount));
+
+    // recalculateCellWidth();
+    resizeToFit();
 
     emit newlineAfterCountChanged();
 }
@@ -108,6 +131,11 @@ void MainWindow::setNewlineAfterDuration(int newNewlineAfterDuration)
         return;
 
     m_newlineAfterDuration = newNewlineAfterDuration;
+    m_history.setNewlineAfterDuration(newNewlineAfterDuration);
+
+    if (newNewlineAfterDuration != ui->txtNewlineAfterDuration->text().toUInt())
+        ui->txtNewlineAfterDuration->setText(QString::number(newNewlineAfterDuration));
+
     emit newlineAfterDurationChanged();
 }
 
@@ -118,13 +146,19 @@ bool MainWindow::newLineAfterCountEnabled() const
 
 void MainWindow::setNewlineAfterCountEnabled(bool newNewlineAfterCountEnabled)
 {
+    qDebug() << newNewlineAfterCountEnabled;
     if (m_newlineAfterCountEnabled == newNewlineAfterCountEnabled)
         return;
     m_newlineAfterCountEnabled = newNewlineAfterCountEnabled;
     m_history.setNewlineAfterCountEnabled(newNewlineAfterCountEnabled);
 
-    if (newNewlineAfterCountEnabled)
-    recalculateCellWidth();
+    if (newNewlineAfterCountEnabled != ui->cbNewlineAfterBytes->isChecked())
+        ui->cbNewlineAfterBytes->setChecked(newNewlineAfterCountEnabled);
+
+    if (newNewlineAfterCountEnabled) {
+        recalculateCellWidth();
+    }
+    resizeToFit();
 
     emit newlineAfterCountEnabledChanged();
 }
@@ -139,6 +173,11 @@ void MainWindow::setNewlineAfterDurationEnabled(bool newNewlineAfterDuraionEnabl
     if (m_newlineAfterDuraionEnabled == newNewlineAfterDuraionEnabled)
         return;
     m_newlineAfterDuraionEnabled = newNewlineAfterDuraionEnabled;
+    m_history.setNewlineAfterDurationEnabled(newNewlineAfterDuraionEnabled);
+
+    if (newNewlineAfterDuraionEnabled != ui->cbNewlineAfterDuration->isChecked())
+        ui->cbNewlineAfterDuration->setChecked(newNewlineAfterDuraionEnabled);
+
     emit newlineAfterDurationEnabledChanged();
 }
 
@@ -178,6 +217,15 @@ void MainWindow::setAutoscroll(bool newAutoscroll)
     if (m_autoscroll == newAutoscroll)
         return;
     m_autoscroll = newAutoscroll;
+
+    if (newAutoscroll != ui->cbAutoScroll->isChecked()) {
+        ui->cbAutoScroll->setChecked(newAutoscroll);
+    }
+
+    if (newAutoscroll) {
+        ui->historyTable->scrollToBottom();
+    }
+
     emit autoscrollChanged();
 }
 
@@ -235,7 +283,7 @@ void MainWindow::recalculateCellWidth()
     }
 
     // timestamp column
-    width = fm.boundingRect("HH:mm:ss.zzz ").width();
+    width = fm.boundingRect(TIME_FORMAT " ").width();
     ui->historyTable->setColumnWidth(HistoryModel::TimestampRole, width + margin);
 
     // direction column
@@ -246,11 +294,50 @@ void MainWindow::recalculateCellWidth()
 void MainWindow::setupActionMenu()
 {
     m_tableContextMenu.addAction(ui->actionResize_to_fit);
-    m_tableContextMenu.addAction(ui->actionAuto_scroll);
     m_tableContextMenu.addAction(ui->action_Clear_history);
     m_tableContextMenu.addAction(ui->actionCopy_as_text);
     m_tableContextMenu.addAction(ui->actionCopy_payload_as_text);
+    m_tableContextMenu.addAction(ui->actionShow_HEX_column);
 
     connect(ui->actionResize_to_fit, &QAction::triggered, this, &MainWindow::resizeToFit);
-    connect(ui->actionAuto_scroll, &QAction::toggled, this, &MainWindow::setAutoscroll);
+    // toggle HEX visibilily
+    connect(ui->actionShow_HEX_column, &QAction::toggled, this, [&](){
+        ui->historyTable->setColumnHidden(HistoryModel::ColumnRoles::HexRole, !ui->actionShow_HEX_column->isChecked());
+    });
+    connect(ui->action_Clear_history, &QAction::triggered, this, &MainWindow::clearHistory);
+}
+
+void MainWindow::connectSignalSlots()
+{
+    // show context menu
+    connect(ui->historyTable, &QTableView::customContextMenuRequested, this, &MainWindow::onTableContextMenuRequested);
+
+    // toggle newline
+    connect(ui->cbNewlineAfterBytes, &QCheckBox::toggled, this, [&](){
+        setNewlineAfterCountEnabled(ui->cbNewlineAfterBytes->isChecked());
+    });
+    connect(ui->txtNewlineAfterBytes, &QLineEdit::returnPressed, this, [&](){
+        setNewlineAfterCount(ui->txtNewlineAfterBytes->text().toUInt());
+    });
+    connect(ui->cbNewlineAfterDuration, &QCheckBox::toggled, this, [&](){
+        setNewlineAfterDurationEnabled(ui->cbNewlineAfterDuration->isChecked());
+    });
+    connect(ui->txtNewlineAfterDuration, &QLineEdit::returnPressed, this, [&](){
+        setNewlineAfterDuration(ui->txtNewlineAfterDuration->text().toUInt());
+    });
+
+    // set autoscroll
+    connect(ui->cbAutoScroll, &QCheckBox::toggled, this, [&](){
+        setAutoscroll(ui->cbAutoScroll->isChecked());
+    });
+
+    // stop autoscroll when clicked on a row
+    connect(ui->historyTable, &QTableView::clicked, this, [&](const QModelIndex &_index){
+        Q_UNUSED(_index);
+        setAutoscroll(false);
+    });
+
+    connect(ui->btnSendA, &QPushButton::released, this, [&](){
+        onDataReceived(ui->cbbInputA->currentText().toLatin1());
+    });
 }

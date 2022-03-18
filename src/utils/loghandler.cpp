@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include "loghandler.h"
+#include "commonconfig.h"
 
 const char *getFileName(const char *path) {
     if (!path) return "";
@@ -26,7 +27,7 @@ const char *getFileName(const char *path) {
 
 QString trimFunctionName(const QString &longName) {
     // keep class name and function name
-    const auto matches = QRegularExpression("(\\w+::.*(?=\\()|(?<= )\\w+.*(?=\\())").match(longName);
+    const auto matches = QRegularExpression("(\\w+::\\w+(?=\\()|(?<= )\\w+.*(?=\\())").match(longName);
     if (!matches.hasMatch())
         return longName;
     return matches.captured(0);
@@ -54,7 +55,7 @@ void logHandler(QtMsgType type, const QMessageLogContext &context, const QString
     }
     mutex.unlock();
 
-    const auto time = QTime::currentTime().toString("HH:mm:ss.zzz");
+    const auto time = QTime::currentTime().toString(TIME_FORMAT);
     const auto timeStr = time.toStdString().c_str();
 
     switch (type) {
@@ -82,6 +83,6 @@ void logHandler(QtMsgType type, const QMessageLogContext &context, const QString
 }
 
 void initLog() {
-    qInstallMessageHandler(logHandler);
+    qInstallMessageHandler(&logHandler);
     qDebug("init");
 }

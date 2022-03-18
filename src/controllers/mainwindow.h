@@ -62,6 +62,7 @@ public:
 private:
     void recalculateCellWidth();
     void setupActionMenu();
+    void connectSignalSlots();
 
 signals:
     void newlineAfterCountChanged();
@@ -78,10 +79,10 @@ signals:
 private slots:
     void onPortADataReceived();
     void onDataReceived(const QByteArray &_data);
-    void onBreakTimeout();
     void onTableContextMenuRequested(const QPoint &_pos);
 
     void resizeToFit();
+    void clearHistory();
 
 private:
     Ui::MainWindow *ui;
@@ -99,7 +100,7 @@ private:
     bool m_newlineAfterDuraionEnabled {};
     bool m_dataLinkEnabled {};
     bool m_signalLinkEnabled {};
-    bool m_autoscroll {true};
+    bool m_autoscroll {false};
     bool m_showTimestamp {true};
     bool m_showHexa {true};
     int m_historyCapacity {};

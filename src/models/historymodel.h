@@ -13,8 +13,8 @@ public:
     enum ColumnRoles {
         TimestampRole,
         DirectionRole,
-        HexRole,
         StringRole,
+        HexRole,
         NumColumns
     };
 
@@ -44,6 +44,7 @@ public:
     void clear();
     void setHistoryCapacity(int _cap);
     void addItem(DataDirection _dir, const QByteArray &_data);
+    void addItems(DataDirection _dir, const QList<QByteArray> &_data);
     void appendData(DataDirection _dir, const QByteArray &_data);
 
     int newlineAfterCount() const;
@@ -52,13 +53,20 @@ public:
     bool newLineAfterCountEnabled() const;
     void setNewlineAfterCountEnabled(bool newNewLineAfterCountEnabled);
 
+    int newlineAfterDuration() const;
+    void setNewlineAfterDuration(int newNewlineAfterDuration);
+
+    bool newlineAfterDurationEnabled() const;
+    void setNewlineAfterDurationEnabled(bool newNewlineAfterDuraionEnabled);
+
     int historyCapacity() const;
 
 private:
-    static bool isTextConvertible(const QByteArray &_data);
     QString formattedHexString(const QByteArray &_data) const;
     QString formattedString(const QByteArray &_data) const;
     static const char* toString(const DataDirection _dir);
+    static QList<QByteArray> splitDataByLength(const QByteArray &_data, int _chunkLength, int _firstChunkLength);
+    static QDateTime now();
 
 signals:
 
@@ -68,17 +76,19 @@ private:
     struct LogData {
         int index;
         DataDirection direction;
-        QDateTime datetime;
+        QDateTime createdDatetime;
+        QDateTime lastAppendDateTime;
         QByteArray data;
     };
 
     int m_totalLines {};
     int m_historyCapacity {};
-    DataDirection m_lastDataDirection {};
     bool m_endedAtNewline {true};
     QList<LogData> m_items {};
     int m_newlineAfterCount {};
     bool m_newLineAfterCountEnabled {};
+    int m_newlineAfterDuration {}; // ms
+    bool m_newlineAfterDuraionEnabled {};
 };
 
 #endif // HISTORYMODEL_H

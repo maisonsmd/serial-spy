@@ -22,6 +22,7 @@ HEADERS += \
     src/controllers/mainwindow.h \
     src/controllers/serialhandler.h \
     src/models/historymodel.h \
+    src/utils/commonconfig.h \
     src/utils/loghandler.h
 
 FORMS += \
