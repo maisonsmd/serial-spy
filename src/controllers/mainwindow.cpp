@@ -1,7 +1,9 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include <QtDebug>
-#include <QFontMetrics>
+#include <QClipboard>
+#include <algorithm>
+// #include <QFontMetrics>
 #include "utils/commonconfig.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -20,6 +22,7 @@ MainWindow::MainWindow(QWidget *parent)
     ui->historyTable->setModel(&m_history);
     ui->txtNewlineAfterBytes->setValidator(new QIntValidator(8, 1000, this));
     ui->txtNewlineAfterDuration->setValidator(new QIntValidator(10, 10000, this));
+    ui->txtHistoryCap->setValidator(new QIntValidator(10, 999999, this));
 
     connectSignalSlots();
 
@@ -33,7 +36,7 @@ MainWindow::MainWindow(QWidget *parent)
     setNewlineAfterDuration(500);
     setNewlineAfterDurationEnabled(true);
 
-    setHistoryCapacity(100);
+    setHistoryCapacity(10000);
 
     auto testTimer = new QTimer();
     connect(testTimer, &QTimer::timeout, this, [&]{
@@ -48,8 +51,9 @@ MainWindow::MainWindow(QWidget *parent)
 
     testTimer->setInterval(500);
     testTimer->setSingleShot(false);
-    testTimer->start();
-    onDataReceived("1234567822345678323456789423456789");
+    onDataReceived("1234567890123456");
+    // testTimer->start();
+    onDataReceived("123456\n7822345678323456789423456789");
 }
 
 MainWindow::~MainWindow()
@@ -68,8 +72,12 @@ void MainWindow::onDataReceived(const QByteArray &_data)
 {
     m_endedAtNewline = false;
 
-    m_history.appendData(HistoryModel::A_TO_B, _data);
-    resizeToFit();
+    auto data = _data;
+    data = data.replace("\\n", "\n");
+    data = data.replace("\\r", "\r");
+
+    m_history.appendData(HistoryModel::A_TO_B, data);
+    // resizeToFit();
 
     if (autoscroll()) {
         ui->historyTable->scrollToBottom();
@@ -78,7 +86,6 @@ void MainWindow::onDataReceived(const QByteArray &_data)
 
 void MainWindow::onTableContextMenuRequested(const QPoint &_pos)
 {
-    QModelIndex index = ui->historyTable->indexAt(_pos);
     m_tableContextMenu.popup(ui->historyTable->viewport()->mapToGlobal(_pos));
 }
 
@@ -112,8 +119,7 @@ void MainWindow::setNewlineAfterCount(int newNewlineAfterCount)
     if (newNewlineAfterCount != ui->txtNewlineAfterBytes->text().toUInt())
         ui->txtNewlineAfterBytes->setText(QString::number(newNewlineAfterCount));
 
-    // recalculateCellWidth();
-    resizeToFit();
+    // resizeToFit();
 
     emit newlineAfterCountChanged();
 }
@@ -156,9 +162,8 @@ void MainWindow::setNewlineAfterCountEnabled(bool newNewlineAfterCountEnabled)
         ui->cbNewlineAfterBytes->setChecked(newNewlineAfterCountEnabled);
 
     if (newNewlineAfterCountEnabled) {
-        recalculateCellWidth();
+        // resizeToFit();
     }
-    resizeToFit();
 
     emit newlineAfterCountEnabledChanged();
 }
@@ -266,45 +271,54 @@ void MainWindow::setHistoryCapacity(int newHistoryCapacity)
         return;
     m_historyCapacity = newHistoryCapacity;
     m_history.setHistoryCapacity(newHistoryCapacity);
-    emit historyCapacityChanged();
-}
 
-void MainWindow::recalculateCellWidth()
-{
-    QFontMetrics fm(ui->historyTable->font());
-    int width {};
-    constexpr int margin {10};
-
-    // hex & string column
-    if (newLineAfterCountEnabled() && newlineAfterCount() > 0) {
-        width = fm.boundingRect(QByteArray(newlineAfterCount() * 3, '-')).width();
-        ui->historyTable->setColumnWidth(HistoryModel::HexRole, width + margin);
-        ui->historyTable->setColumnWidth(HistoryModel::StringRole, width / 3 + margin);
+    if (newHistoryCapacity != ui->txtHistoryCap->text().toUInt()) {
+        ui->txtHistoryCap->setText(QString::number(newHistoryCapacity));
     }
 
-    // timestamp column
-    width = fm.boundingRect(TIME_FORMAT " ").width();
-    ui->historyTable->setColumnWidth(HistoryModel::TimestampRole, width + margin);
-
-    // direction column
-    width = fm.boundingRect("A->B ").width();
-    ui->historyTable->setColumnWidth(HistoryModel::DirectionRole, width + margin);
+    emit historyCapacityChanged();
 }
 
 void MainWindow::setupActionMenu()
 {
-    m_tableContextMenu.addAction(ui->actionResize_to_fit);
-    m_tableContextMenu.addAction(ui->action_Clear_history);
-    m_tableContextMenu.addAction(ui->actionCopy_as_text);
-    m_tableContextMenu.addAction(ui->actionCopy_payload_as_text);
-    m_tableContextMenu.addAction(ui->actionShow_HEX_column);
+    m_tableContextMenu.addAction(ui->actResizeToFit);
+    m_tableContextMenu.addAction(ui->actClearHistory);
+    m_tableContextMenu.addAction(ui->actCopySelection);
+    m_tableContextMenu.addAction(ui->actCopySelectionPayload);
+    m_tableContextMenu.addAction(ui->actShowHexa);
 
-    connect(ui->actionResize_to_fit, &QAction::triggered, this, &MainWindow::resizeToFit);
+    connect(ui->actResizeToFit, &QAction::triggered, this, &MainWindow::resizeToFit);
     // toggle HEX visibilily
-    connect(ui->actionShow_HEX_column, &QAction::toggled, this, [&](){
-        ui->historyTable->setColumnHidden(HistoryModel::ColumnRoles::HexRole, !ui->actionShow_HEX_column->isChecked());
+    connect(ui->actShowHexa, &QAction::toggled, this, [&](){
+        ui->historyTable->setColumnHidden(HistoryModel::toColumn(HistoryModel::HexRole), !ui->actShowHexa->isChecked());
     });
-    connect(ui->action_Clear_history, &QAction::triggered, this, &MainWindow::clearHistory);
+    connect(ui->actClearHistory, &QAction::triggered, this, &MainWindow::clearHistory);
+    connect(ui->actCopySelection, &QAction::triggered, this, [&](){
+        QString outputString {};
+        int columnIndex {0};
+
+        for (const auto &i : ui->historyTable->selectionModel()->selectedIndexes()) {
+            outputString.append(i.data().toString().replace("\n", ""));
+
+            // append '~' if not last column
+            if (columnIndex != HistoryModel::toColumn(HistoryModel::ColumnRoles::NumColumns) - 1) {
+                outputString.append(" ~ ");
+                columnIndex++;
+            } else {
+                outputString.append("\n");
+                columnIndex = 0;
+            }
+        }
+        QApplication::clipboard()->setText(outputString);
+    });
+    connect(ui->actCopySelectionPayload, &QAction::triggered, this, [&](){
+        QString outputString {};
+        for (const auto &i : ui->historyTable->selectionModel()->selectedRows(HistoryModel::toColumn(HistoryModel::StringRole))) {
+            outputString.append(i.data().toString());
+            outputString.append("\n");
+        }
+        QApplication::clipboard()->setText(outputString);
+    });
 }
 
 void MainWindow::connectSignalSlots()
@@ -326,6 +340,10 @@ void MainWindow::connectSignalSlots()
         setNewlineAfterDuration(ui->txtNewlineAfterDuration->text().toUInt());
     });
 
+    // history capacity
+    connect(ui->txtHistoryCap, &QLineEdit::returnPressed, this, [&](){
+        setHistoryCapacity(ui->txtHistoryCap->text().toUInt());
+    });
     // set autoscroll
     connect(ui->cbAutoScroll, &QCheckBox::toggled, this, [&](){
         setAutoscroll(ui->cbAutoScroll->isChecked());
@@ -338,6 +356,9 @@ void MainWindow::connectSignalSlots()
     });
 
     connect(ui->btnSendA, &QPushButton::released, this, [&](){
+        onDataReceived(ui->cbbInputA->currentText().toLatin1());
+    });
+    connect(ui->cbbInputA->lineEdit(), &QLineEdit::returnPressed, this, [&](){
         onDataReceived(ui->cbbInputA->currentText().toLatin1());
     });
 }

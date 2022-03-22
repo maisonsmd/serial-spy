@@ -26,13 +26,13 @@ QVariant HistoryModel::headerData(int section, Qt::Orientation orientation, int 
 {
     if (role == Qt::DisplayRole && orientation == Qt::Horizontal) {
         switch (section) {
-        case TimestampRole:
+        case toColumn(TimestampRole):
             return "Timestamp";
-        case DirectionRole:
+        case toColumn(DirectionRole):
             return "Dir";
-        case HexRole:
+        case toColumn(HexRole):
             return "Hex";
-        case StringRole:
+        case toColumn(StringRole):
             return "String";
         default:
             break;
@@ -62,7 +62,7 @@ int HistoryModel::columnCount(const QModelIndex &parent) const
     if (parent.isValid())
         return 0;
 
-    return ColumnRoles::NumColumns;
+    return toColumn(ColumnRoles::NumColumns);
 }
 
 QVariant HistoryModel::data(const QModelIndex &index, int role) const
@@ -77,13 +77,13 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const
         const auto &item = m_items.at(index.row());
 
         switch (index.column()) {
-        case TimestampRole:
+        case toColumn(TimestampRole):
             return item.createdDatetime.toString(TIME_FORMAT);
-        case DirectionRole:
+        case toColumn(DirectionRole):
             return toString(item.direction);
-        case HexRole:
+        case toColumn(HexRole):
             return formattedHexString(item.data);
-        case StringRole:
+        case toColumn(StringRole):
             return formattedString(item.data);
         default:
             break;
@@ -92,9 +92,9 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const
 
     if (role == Qt::ForegroundRole) {
         switch (index.column()) {
-        case TimestampRole:
-        case HexRole:
-        case DirectionRole:
+        case toColumn(TimestampRole):
+        case toColumn(HexRole):
+        case toColumn(DirectionRole):
             return QColor(Qt::gray);
         default:
             return QColor(Qt::black);
@@ -106,11 +106,18 @@ QVariant HistoryModel::data(const QModelIndex &index, int role) const
 
 bool HistoryModel::removeRows(int row, int count, const QModelIndex &parent)
 {
+    if (rowCount() == 0)
+        return false;
+
     if (row < 0 || row >= rowCount())
         return false;
 
+    if (row + count >= rowCount()) {
+        count = rowCount() - row;
+    }
+
     beginRemoveRows(parent, row, row + count - 1);
-    for (int i = 0; i < count; ++i) {
+    for (int i = 0; i < count && !m_items.empty(); ++i) {
         m_items.removeFirst();
     }
     endRemoveRows();
@@ -130,8 +137,11 @@ void HistoryModel::setHistoryCapacity(int _cap)
 {
     if (_cap == m_historyCapacity)
         return;
+    // shrinking
     if (_cap < m_historyCapacity) {
-        removeRows(0, m_historyCapacity - _cap);
+        if (rowCount() > _cap) {
+            removeRows(0, _cap - rowCount());
+        }
     }
     m_historyCapacity = _cap;
 }
@@ -193,11 +203,7 @@ void HistoryModel::appendData(DataDirection _dir, const QByteArray &_data)
 
     if (needNewline) {
         // add new rows
-        if (newLineAfterCountEnabled()) {
-            addItems(_dir, splitDataByLength(_data, chunkLength, chunkLength));
-        } else {
-            addItem(_dir, _data);
-        }
+        addItems(_dir, splitData(_data, newLineAfterCountEnabled(), chunkLength, chunkLength));
     } else {
         auto &lastItem = m_items[rowCount() - 1]; // rowCount() always > 0 here
 
@@ -213,10 +219,10 @@ void HistoryModel::appendData(DataDirection _dir, const QByteArray &_data)
                 firstChunkLength = chunkLength - lastItem.data.length();
             }
 
-            auto newItems = splitDataByLength(_data, chunkLength, firstChunkLength);
+            auto newItems = splitData(_data, true, chunkLength, firstChunkLength);
             if (concatenateFirstChunk) {
                 lastItem.data.append(newItems.first());
-                emit dataChanged(index(rowCount() - 1, StringRole), index(rowCount() - 1, HexRole));
+                emit dataChanged(index(rowCount() - 1, toColumn(StringRole)), index(rowCount() - 1, toColumn(HexRole)));
                 newItems.pop_front();
             }
 
@@ -225,7 +231,7 @@ void HistoryModel::appendData(DataDirection _dir, const QByteArray &_data)
             // new data fits to the last row, just append it
             lastItem.data.append(_data);
             lastItem.lastAppendDateTime = now();
-            emit dataChanged(index(rowCount() - 1, StringRole), index(rowCount() - 1, HexRole));
+            emit dataChanged(index(rowCount() - 1, toColumn(StringRole)), index(rowCount() - 1, toColumn(HexRole)));
         }
     }
 
@@ -237,25 +243,32 @@ void HistoryModel::appendData(DataDirection _dir, const QByteArray &_data)
 QString HistoryModel::formattedHexString(const QByteArray &_data) const
 {
     constexpr auto DISPLAY_CHARACTER_EACH_BYTE = 3; // 2 chars for HEX + 1 space
-    auto ret = _data.toHex(' ').toUpper();
+    auto ret = _data.toHex(' ').toUpper(); // TODO: toHex fails if Unicode?
 
     QList<QByteArray> lines {};
 
-    if (newLineAfterCountEnabled()) {
-        const auto lineLen = newlineAfterCount() * DISPLAY_CHARACTER_EACH_BYTE;
-        lines = splitDataByLength(ret, lineLen, lineLen);
-    }
-    else {
-        lines.append(ret);
-    }
+    const auto lineLen = newlineAfterCount() * DISPLAY_CHARACTER_EACH_BYTE;
+    lines = splitData(ret, newLineAfterCountEnabled(), lineLen, lineLen);
 
+    const auto maxLen = newlineAfterCount() * DISPLAY_CHARACTER_EACH_BYTE + ((newlineAfterCount() - 1) / 8);
     for (auto &l : lines) {
-        const auto len = l.length() / DISPLAY_CHARACTER_EACH_BYTE;
-        for (int i = len - 2; i > 0; --i) {
+        l.append(' ');
+
+        auto len = l.length() / DISPLAY_CHARACTER_EACH_BYTE;
+
+        for (int i = len - 1; i >= 8; i = int((i - 1) / 8) * 8) {
             if ((i) % 8 == 0) {
-                l.insert(i * DISPLAY_CHARACTER_EACH_BYTE, " ");
+                l.insert((i)* DISPLAY_CHARACTER_EACH_BYTE, " ");
             }
         }
+
+        len = l.length();
+        // right padding
+        if (len < maxLen) {
+            const auto spaces {maxLen - len};
+            l.append(QByteArray((spaces), ' '));
+        }
+
     }
 
     return lines.join("\n");
@@ -270,7 +283,7 @@ QString HistoryModel::formattedString(const QByteArray &_data) const
     for (int i = 0; i < _data.count(); ++i) {
         const auto c = _data.at(i);
         // is c printable?
-        if (c >= 32) {
+        if (c >= 32 && c < 127) {
             stream << c;
         } else {
             stream << '.';
@@ -378,6 +391,35 @@ QList<QByteArray> HistoryModel::splitDataByLength(const QByteArray &_data, int _
     }
 
     return newItems;
+}
+
+QList<QByteArray> HistoryModel::splitData(const QByteArray &_data, bool limitByLength, int _chunkLength, int _firstChunkLength)
+{
+    if (limitByLength) {
+        Q_ASSERT(_chunkLength > 0);
+        Q_ASSERT(_firstChunkLength <= _chunkLength);
+
+        if (_firstChunkLength == -1) _firstChunkLength = _chunkLength;
+    }
+
+    auto tmpData = _data.split('\n');
+    QList<QByteArray> result {};
+
+    Q_ASSERT(tmpData.length() > 0);
+
+    if (tmpData.front().length() <= _firstChunkLength) {
+        result.append(tmpData.front());
+        tmpData.pop_front();
+    } else {
+        result.append(tmpData.front().left(_firstChunkLength));
+        tmpData.front().remove(0, _firstChunkLength);
+    }
+
+    for (const auto &line : tmpData) {
+        result.append(splitDataByLength(line, _chunkLength, _chunkLength));
+    }
+
+    return result;
 }
 
 QDateTime HistoryModel::now()

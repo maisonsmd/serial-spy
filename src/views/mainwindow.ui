@@ -80,10 +80,36 @@
              </property>
             </widget>
            </item>
-           <item row="2" column="0">
+           <item row="3" column="0">
             <widget class="QCheckBox" name="cbAutoScroll">
              <property name="text">
               <string>Auto scroll</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QCheckBox" name="cbLimitHistory">
+             <property name="enabled">
+              <bool>false</bool>
+             </property>
+             <property name="text">
+              <string>History limit</string>
+             </property>
+             <property name="checkable">
+              <bool>true</bool>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QLineEdit" name="txtHistoryCap">
+             <property name="maximumSize">
+              <size>
+               <width>100</width>
+               <height>16777215</height>
+              </size>
              </property>
             </widget>
            </item>
@@ -607,66 +633,66 @@
     <property name="title">
      <string>&amp;Edit</string>
     </property>
-    <addaction name="action_Clear_history"/>
-    <addaction name="actionCopy_as_text"/>
-    <addaction name="actionCopy_payload_as_text"/>
+    <addaction name="actClearHistory"/>
+    <addaction name="actCopySelection"/>
+    <addaction name="actCopySelectionPayload"/>
    </widget>
    <widget class="QMenu" name="menu_File">
     <property name="title">
      <string>&amp;File</string>
     </property>
-    <addaction name="action_Open_file"/>
-    <addaction name="action_Save_to_file"/>
+    <addaction name="actOpenFile"/>
+    <addaction name="actSaveToFile"/>
     <addaction name="separator"/>
-    <addaction name="action_Exit"/>
+    <addaction name="actExit"/>
    </widget>
    <widget class="QMenu" name="menu_View">
     <property name="title">
      <string>&amp;View</string>
     </property>
-    <addaction name="actionResize_to_fit"/>
+    <addaction name="actResizeToFit"/>
    </widget>
    <addaction name="menu_File"/>
    <addaction name="menu_Edit"/>
    <addaction name="menu_View"/>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
-  <action name="action_Clear_history">
+  <action name="actClearHistory">
    <property name="text">
     <string>&amp;Clear history</string>
    </property>
   </action>
-  <action name="action_Save_to_file">
+  <action name="actSaveToFile">
    <property name="text">
     <string>&amp;Save to file</string>
    </property>
   </action>
-  <action name="action_Open_file">
+  <action name="actOpenFile">
    <property name="text">
     <string>&amp;Open file</string>
    </property>
   </action>
-  <action name="action_Exit">
+  <action name="actExit">
    <property name="text">
     <string>E&amp;xit</string>
    </property>
   </action>
-  <action name="actionResize_to_fit">
+  <action name="actResizeToFit">
    <property name="text">
     <string>&amp;Resize to fit</string>
    </property>
   </action>
-  <action name="actionCopy_as_text">
+  <action name="actCopySelection">
    <property name="text">
-    <string>Copy as text</string>
+    <string>Copy selection</string>
    </property>
   </action>
-  <action name="actionCopy_payload_as_text">
+  <action name="actCopySelectionPayload">
    <property name="text">
-    <string>Copy payload as text</string>
+    <string>Copy selection payload</string>
    </property>
   </action>
-  <action name="actionShow_HEX_column">
+  <action name="actShowHexa">
    <property name="checkable">
     <bool>true</bool>
    </property>

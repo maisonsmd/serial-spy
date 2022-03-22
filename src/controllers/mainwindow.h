@@ -60,7 +60,6 @@ public:
     void setHistoryCapacity(int newHistoryCapacity);
 
 private:
-    void recalculateCellWidth();
     void setupActionMenu();
     void connectSignalSlots();
 

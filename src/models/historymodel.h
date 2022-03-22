@@ -11,12 +11,20 @@ class HistoryModel : public QAbstractTableModel
 
 public:
     enum ColumnRoles {
-        TimestampRole,
+        TimestampRole = Qt::UserRole + 1,
         DirectionRole,
-        StringRole,
         HexRole,
+        StringRole,
         NumColumns
     };
+
+    static constexpr int toColumn(ColumnRoles role) {
+        return role - TimestampRole;
+    }
+
+    static constexpr ColumnRoles toRole(int column) {
+        return static_cast<ColumnRoles>(TimestampRole + column);
+    }
 
     enum DataDirection {
         A_TO_B,
@@ -66,6 +74,7 @@ private:
     QString formattedString(const QByteArray &_data) const;
     static const char* toString(const DataDirection _dir);
     static QList<QByteArray> splitDataByLength(const QByteArray &_data, int _chunkLength, int _firstChunkLength);
+    static QList<QByteArray> splitData(const QByteArray &_data, bool limitByLength, int _chunkLength = -1, int _firstChunkLength = -1);
     static QDateTime now();
 
 signals:
